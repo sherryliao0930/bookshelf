@@ -36,6 +36,8 @@
   let renderTask = null;
   let renderQueued = null;
   let appliedScale = 1;       // 這一頁實際用的倍率
+  let spread = false;         // 雙頁模式
+  const SPREAD_GAP = 14;      // 雙頁之間的縫隙，要跟 CSS 的 .canvas-wrap gap 一致
 
   /* ---------------- 工具 ---------------- */
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
@@ -1034,6 +1036,10 @@
     document.body.style.overflow = 'hidden';
 
     zoomMode = 'fit-page';
+    try { spread = localStorage.getItem('bookshelf:spread') === '1'; } catch (e) { spread = false; }
+    // 手機螢幕太窄，兩頁並排看不清楚
+    if (isMobile()) spread = false;
+    updateSpreadLabel();
     const saved = parseInt(localStorage.getItem('bookshelf:page:' + b.id) || '1', 10);
 
     try {
@@ -1046,7 +1052,7 @@
       };
       pdfDoc = await task.promise;
       $('pageTotal').textContent = pdfDoc.numPages;
-      pageNum = Math.min(Math.max(1, saved || 1), pdfDoc.numPages);
+      pageNum = normalizePage(saved || 1);
       $('readerLoading').style.display = 'none';
       await renderPage();
     } catch (e) {
@@ -1074,9 +1080,11 @@
     }
 
     const target = pageNum;
+    const second = spread && target + 1 <= pdfDoc.numPages ? target + 1 : null;
     $('pageInput').value = target;
     $('prevPage').disabled = $('edgePrev').disabled = target <= 1;
-    $('nextPage').disabled = $('edgeNext').disabled = target >= pdfDoc.numPages;
+    $('nextPage').disabled = $('edgeNext').disabled =
+      target + (spread ? 1 : 0) >= pdfDoc.numPages;
     $('renderSpinner').hidden = false;
 
     try {
@@ -1084,40 +1092,55 @@
       const host = $('pageHost');
       const base = page.getViewport({ scale: 1 });
       const padding = isMobile() ? 16 : 40;
+      // 雙頁時可用寬度要分給兩頁，還要扣掉中間的縫
+      const cols = second ? 2 : 1;
+      const availW = (host.clientWidth - padding - (second ? SPREAD_GAP : 0)) / cols;
 
       let scale;
       if (zoomMode === 'fit-width') {
-        scale = (host.clientWidth - padding) / base.width;
+        scale = availW / base.width;
       } else if (zoomMode === 'fit-page') {
-        scale = Math.min((host.clientWidth - padding) / base.width,
+        scale = Math.min(availW / base.width,
                          (host.clientHeight - padding) / base.height);
       } else {
         scale = customScale;
       }
       scale = Math.max(0.1, Math.min(6, scale));
       appliedScale = scale;
+      updateZoomLabel();          // 先更新標籤，不要等畫完（畫得慢時標籤會跟不上）
 
-      const vp = page.getViewport({ scale });
-      const canvas = $('pdfCanvas');
-      const ctx = canvas.getContext('2d');
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const drawInto = async (pg, canvas) => {
+        const vp = pg.getViewport({ scale });
+        const ctx = canvas.getContext('2d');
+        canvas.hidden = false;
+        canvas.width = Math.floor(vp.width * dpr);
+        canvas.height = Math.floor(vp.height * dpr);
+        canvas.style.width = Math.floor(vp.width) + 'px';
+        canvas.style.height = Math.floor(vp.height) + 'px';
+        renderTask = pg.render({
+          canvasContext: ctx,
+          viewport: vp,
+          transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null
+        });
+        await renderTask.promise;
+        renderTask = null;
+      };
 
-      canvas.width = Math.floor(vp.width * dpr);
-      canvas.height = Math.floor(vp.height * dpr);
-      canvas.style.width = Math.floor(vp.width) + 'px';
-      canvas.style.height = Math.floor(vp.height) + 'px';
+      const canvas = $('pdfCanvas');
+      await drawInto(page, canvas);
 
-      renderTask = page.render({
-        canvasContext: ctx,
-        viewport: vp,
-        transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null
-      });
-      await renderTask.promise;
-      renderTask = null;
+      const canvas2 = $('pdfCanvas2');
+      if (second) {
+        const page2 = await pdfDoc.getPage(second);
+        await drawInto(page2, canvas2);
+      } else {
+        canvas2.hidden = true;
+      }
 
-      updateZoomLabel();
       host.scrollTop = 0;
-      host.scrollLeft = Math.max(0, (canvas.offsetWidth - host.clientWidth) / 2);
+      const wrapW = $('canvasWrap').offsetWidth;
+      host.scrollLeft = Math.max(0, (wrapW - host.clientWidth) / 2);
       if (currentBook) localStorage.setItem('bookshelf:page:' + currentBook.id, String(target));
     } catch (e) {
       renderTask = null;
@@ -1142,9 +1165,18 @@
     else btn.textContent = Math.round(appliedScale * 100) + '%';
   }
 
+  const pageStep = () => (spread ? 2 : 1);
+
+  // 雙頁時固定以奇數頁當左頁，跳到第 6 頁就顯示 5-6，不會每次錯開
+  function normalizePage(n) {
+    let p = Math.min(Math.max(1, n | 0), pdfDoc.numPages);
+    if (spread && p % 2 === 0) p -= 1;
+    return Math.max(1, p);
+  }
+
   function goPage(n) {
     if (!pdfDoc) return;
-    const p = Math.min(Math.max(1, n | 0), pdfDoc.numPages);
+    const p = normalizePage(n);
     if (p === pageNum && !renderQueued) { $('pageInput').value = p; return; }
     pageNum = p;
     renderPage();
@@ -1168,6 +1200,19 @@
   }
 
   // 整頁 → 符合寬度 → 100% → 整頁…
+  function toggleSpread() {
+    if (!pdfDoc) return;
+    spread = !spread;
+    try { localStorage.setItem('bookshelf:spread', spread ? '1' : '0'); } catch (e) {}
+    updateSpreadLabel();
+    pageNum = normalizePage(pageNum);
+    renderPage();
+  }
+
+  function updateSpreadLabel() {
+    $('spreadBtn').textContent = spread ? '雙頁' : '單頁';
+  }
+
   function cycleZoomMode() {
     if (zoomMode === 'fit-page') { zoomMode = 'fit-width'; }
     else if (zoomMode === 'fit-width') { zoomMode = 'custom'; customScale = 1; }
@@ -1256,10 +1301,11 @@
 
     // 閱讀器
     $('closeReader').addEventListener('click', closeReader);
-    $('prevPage').addEventListener('click', () => goPage(pageNum - 1));
-    $('nextPage').addEventListener('click', () => goPage(pageNum + 1));
-    $('edgePrev').addEventListener('click', () => goPage(pageNum - 1));
-    $('edgeNext').addEventListener('click', () => goPage(pageNum + 1));
+    $('prevPage').addEventListener('click', () => goPage(pageNum - pageStep()));
+    $('nextPage').addEventListener('click', () => goPage(pageNum + pageStep()));
+    $('edgePrev').addEventListener('click', () => goPage(pageNum - pageStep()));
+    $('edgeNext').addEventListener('click', () => goPage(pageNum + pageStep()));
+    $('spreadBtn').addEventListener('click', toggleSpread);
     $('zoomIn').addEventListener('click', () => zoomBy(1));
     $('zoomOut').addEventListener('click', () => zoomBy(-1));
     $('zoomLevel').addEventListener('click', cycleZoomMode);
@@ -1292,13 +1338,14 @@
       }
       switch (e.key) {
         case 'Escape': closeReader(); break;
-        case 'ArrowLeft': case 'PageUp': e.preventDefault(); goPage(pageNum - 1); break;
-        case 'ArrowRight': case 'PageDown': case ' ': e.preventDefault(); goPage(pageNum + 1); break;
+        case 'ArrowLeft': case 'PageUp': e.preventDefault(); goPage(pageNum - pageStep()); break;
+        case 'ArrowRight': case 'PageDown': case ' ': e.preventDefault(); goPage(pageNum + pageStep()); break;
         case 'Home': e.preventDefault(); goPage(1); break;
         case 'End': e.preventDefault(); if (pdfDoc) goPage(pdfDoc.numPages); break;
         case '+': case '=': e.preventDefault(); zoomBy(1); break;
         case '-': case '_': e.preventDefault(); zoomBy(-1); break;
         case 'f': case 'F': toggleFullscreen(); break;
+        case 'd': case 'D': e.preventDefault(); toggleSpread(); break;
         case 'g': case 'G': e.preventDefault(); $('pageInput').select(); break;
       }
     });
