@@ -838,17 +838,18 @@
           (b.position != null && b.position > m ? b.position : m), 0);
         row.position = maxPos + 10;
       }
-      let { error } = await sb.from('books').insert(row);
-      // 資料庫還沒跑 supabase-migration.sql 的話沒有 position 欄位，去掉再存一次
-      if (error && /position/i.test(String(error.message || ''))) {
-        hasPosition = false;
-        delete row.position;
+      // 資料庫還沒跑 supabase-migration.sql 的話會少欄位。
+      // Postgres 一次只會報一個缺少的欄位，所以要一個一個拿掉重試。
+      const optional = ['position', 'category'];
+      let error = null;
+      for (let attempt = 0; attempt <= optional.length; attempt++) {
         ({ error } = await sb.from('books').insert(row));
-      }
-      if (error && /category/i.test(String(error.message || ''))) {
-        hasCategory = false;
-        delete row.category;
-        ({ error } = await sb.from('books').insert(row));
+        if (!error) break;
+        const msg = String(error.message || '');
+        const missing = optional.find((c) => row[c] !== undefined && msg.indexOf("'" + c + "'") >= 0);
+        if (!missing) break;
+        if (missing === 'position') hasPosition = false; else hasCategory = false;
+        delete row[missing];
       }
       if (error) {
         await sb.storage.from(BUCKET).remove([pdfPath, coverPath].filter(Boolean));
