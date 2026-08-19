@@ -1129,13 +1129,22 @@
       requireAdmin(openUpload, '上傳新書需要管理密碼。'));
 
     let rt;
-    window.addEventListener('resize', () => {
+    const onResize = () => {
       clearTimeout(rt);
       rt = setTimeout(() => {
         renderShelf();
         if (pdfDoc && zoomMode !== 'custom') renderPage();
       }, 180);
-    });
+    };
+    window.addEventListener('resize', onResize);
+    // 書架寬度變了就重算一層放幾本（視窗縮放、捲軸出現、瀏覽器分頁改變大小都算）
+    if (window.ResizeObserver) {
+      let lastW = 0;
+      new ResizeObserver((entries) => {
+        const w = Math.round(entries[0].contentRect.width);
+        if (w && w !== lastW) { lastW = w; onResize(); }
+      }).observe($('shelfRows'));
+    }
 
     // 上傳
     document.querySelectorAll('[data-close-upload]').forEach((b) =>
