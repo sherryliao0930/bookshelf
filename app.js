@@ -1109,7 +1109,10 @@
       appliedScale = scale;
       updateZoomLabel();          // 先更新標籤，不要等畫完（畫得慢時標籤會跟不上）
 
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // 依螢幕實際解析度繪製（手機常見 3 倍），畫面才不會糊。
+      // 但畫布像素總量有上限（iOS Safari 約 1670 萬），超過會整張變空白，
+      // 所以放大到很大時要自動降倍率。雙頁時兩張畫布共用這個額度。
+      const dpr = pickDpr(vpWidth(base, scale), vpHeight(base, scale), cols);
       const drawInto = async (pg, canvas) => {
         const vp = pg.getViewport({ scale });
         const ctx = canvas.getContext('2d');
@@ -1156,6 +1159,18 @@
         renderPage();
       }
     }
+  }
+
+  const MAX_CANVAS_PX = 12e6;   // 保守一點，離瀏覽器上限留餘裕
+  const vpWidth = (base, scale) => base.width * scale;
+  const vpHeight = (base, scale) => base.height * scale;
+
+  function pickDpr(w, h, cols) {
+    let d = Math.min(window.devicePixelRatio || 1, 3);
+    const budget = MAX_CANVAS_PX / (cols || 1);
+    const area = w * h * d * d;
+    if (area > budget) d = Math.max(1, Math.sqrt(budget / (w * h)));
+    return d;
   }
 
   function updateZoomLabel() {
