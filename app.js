@@ -166,13 +166,7 @@
   const catOf = (b) => (b.category || '').trim() || UNCATEGORIZED;
 
   function applyFilter() {
-    const q = $('searchInput').value.trim().toLowerCase();
-    filtered = books.filter((b) => {
-      if (activeCat && catOf(b) !== activeCat) return false;
-      if (!q) return true;
-      return (b.title || '').toLowerCase().includes(q) ||
-             (b.author || '').toLowerCase().includes(q);
-    });
+    filtered = activeCat ? books.filter((b) => catOf(b) === activeCat) : books.slice();
     renderFilterBar();
     renderShelf();
   }
@@ -235,15 +229,15 @@
 
     const count = books.length;
     $('bookCount').textContent = count
-      ? '書櫃裡共 ' + count + ' 本書' + (filtered.length !== count ? '（符合搜尋 ' + filtered.length + ' 本）' : '')
+      ? '書櫃裡共 ' + count + ' 本書' + (activeCat ? '　·　目前看的是「' + activeCat + '」' : '')
       : '';
 
     if (!filtered.length) {
       const t = $('emptyState').querySelector('.empty-title') || {};
       const sub = $('emptyState').querySelector('.empty-sub') || {};
       if (count) {
-        t.textContent = '找不到符合的書';
-        sub.textContent = '換個關鍵字試試，或把搜尋框清空。';
+        t.textContent = '這一科還沒有書';
+        sub.textContent = '點上面的「全部」可以看其他科目。';
       } else {
         t.textContent = '書櫃還是空的';
         sub.textContent = '點右下角的齒輪就能上傳新書，選一個 PDF 檔，它就會變成書櫃上的一本書。';
@@ -425,12 +419,6 @@
     if (ev.button != null && ev.button !== 0) return;       // 只接受左鍵／單指
     if (ev.target.closest && ev.target.closest('.book-tools')) return;
     dragMoved = false;
-
-    // 搜尋中不給拖，否則會照著篩選後的順序亂排
-    if ($('searchInput').value.trim()) {
-      dragState = null;
-      return;
-    }
 
     dragState = {
       book: book, el: el, target: null, before: true, ghost: null,
@@ -1241,7 +1229,6 @@
   /* ---------------- 事件綁定 ---------------- */
   function bindUI() {
     // 書架
-    $('searchInput').addEventListener('input', applyFilter);
     $('uploadBtn').addEventListener('click', () =>
       requireAdmin(openUpload, '上傳新書需要管理密碼。'));
 
