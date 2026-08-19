@@ -9,7 +9,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_OyR1H945iEtwLiCNVjoRyw_uZTmKhaG';
 
 // 3) 管理密碼：知道這組密碼的人才能「上傳新書」和「刪除書」。
 //    只想自己管理就設一組別人猜不到的；想讓大家都能上傳，設成空字串 '' 即可。
-const ADMIN_PASSWORD = 'owl-ulvv-1620';
+const ADMIN_PASSWORD = 'liaopeiyu';
 
 // 4) Storage bucket 名稱（照著 supabase-schema.sql 建立的話不用改）
 const BUCKET = 'books';

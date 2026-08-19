@@ -305,12 +305,6 @@ body.is-dragging{cursor:grabbing;user-select:none}
 .c4{background:linear-gradient(150deg,#f6ae97,#dd6f52)}   /* 頭巾橘 */
 .c5{background:linear-gradient(150deg,#e8b477,#b87c3a)}   /* 海狸毛色 */
 
-.book-badge{
-  position:absolute;left:7px;bottom:7px;
-  background:#fff;color:var(--blue);
-  font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;
-  box-shadow:0 2px 5px rgba(0,0,0,.2);
-}
 .book-tools{
   position:absolute;top:7px;right:7px;display:flex;gap:5px;
   opacity:0;transition:.15s;

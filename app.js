@@ -341,7 +341,6 @@
 
     el.innerHTML =
       '<div class="book-cover">' + cover +
-        (b.page_count ? '<span class="book-badge">' + b.page_count + ' 頁</span>' : '') +
         (canManage()
           ? '<div class="book-tools">' +
               '<button class="book-edit" type="button" title="改書名／換封面" aria-label="改書名或換封面">' +
