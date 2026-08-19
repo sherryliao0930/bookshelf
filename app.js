@@ -36,6 +36,7 @@
   let renderTask = null;
   let renderQueued = null;
   let appliedScale = 1;       // 這一頁實際用的倍率
+  let lastRenderedPage = 0;   // 上一次畫的是第幾頁，用來判斷要不要捲回頁首
   let spread = false;         // 雙頁模式
   const SPREAD_GAP = 14;      // 雙頁之間的縫隙，要跟 CSS 的 .canvas-wrap gap 一致
 
@@ -1024,6 +1025,7 @@
     document.body.style.overflow = 'hidden';
 
     zoomMode = 'fit-page';
+    lastRenderedPage = 0;
     try { spread = localStorage.getItem('bookshelf:spread') === '1'; } catch (e) { spread = false; }
     // 手機螢幕太窄，兩頁並排看不清楚
     if (isMobile()) spread = false;
@@ -1069,6 +1071,12 @@
 
     const target = pageNum;
     const second = spread && target + 1 <= pdfDoc.numPages ? target + 1 : null;
+    // 重畫前先記住捲到哪，畫完才能還原
+    const hostNow = $('pageHost');
+    const prevScroll = {
+      top: hostNow.scrollTop, left: hostNow.scrollLeft,
+      h: hostNow.scrollHeight, w: hostNow.scrollWidth
+    };
     $('pageInput').value = target;
     $('prevPage').disabled = $('edgePrev').disabled = target <= 1;
     $('nextPage').disabled = $('edgeNext').disabled =
@@ -1129,9 +1137,16 @@
         canvas2.hidden = true;
       }
 
-      host.scrollTop = 0;
       const wrapW = $('canvasWrap').offsetWidth;
-      host.scrollLeft = Math.max(0, (wrapW - host.clientWidth) / 2);
+      if (target !== lastRenderedPage) {
+        // 換頁才回到頁首並置中；同一頁只是重畫（縮放、轉向）就留在原來的位置
+        host.scrollTop = 0;
+        host.scrollLeft = Math.max(0, (wrapW - host.clientWidth) / 2);
+      } else if (prevScroll.h > 0) {
+        host.scrollTop = host.scrollHeight * prevScroll.top / prevScroll.h;
+        host.scrollLeft = host.scrollWidth * prevScroll.left / prevScroll.w;
+      }
+      lastRenderedPage = target;
       if (currentBook) localStorage.setItem('bookshelf:page:' + currentBook.id, String(target));
     } catch (e) {
       renderTask = null;
@@ -1233,20 +1248,28 @@
       requireAdmin(openUpload, '上傳新書需要管理密碼。'));
 
     let rt;
+    let lastW = window.innerWidth;
+    let lastH = window.innerHeight;
     const onResize = () => {
       clearTimeout(rt);
       rt = setTimeout(() => {
-        renderShelf();
-        if (pdfDoc && zoomMode !== 'custom') renderPage();
-      }, 180);
+        const w = window.innerWidth, h = window.innerHeight;
+        const widthChanged = w !== lastW;
+        // 手機往下滑時網址列會收起來，只有高度變。這時候重畫書架，
+        // 書架高度會瞬間歸零，捲動位置就被拉回最上面 —— 所以高度變不重畫。
+        const bigHeightChange = Math.abs(h - lastH) > 150;
+        lastW = w; lastH = h;
+        if (widthChanged) renderShelf();
+        if (pdfDoc && zoomMode !== 'custom' && (widthChanged || bigHeightChange)) renderPage();
+      }, 200);
     };
     window.addEventListener('resize', onResize);
-    // 書架寬度變了就重算一層放幾本（視窗縮放、捲軸出現、瀏覽器分頁改變大小都算）
+    // 書架寬度變了就重算一層放幾本（視窗縮放、瀏覽器分頁改變大小、捲軸出現都算）
     if (window.ResizeObserver) {
-      let lastW = 0;
+      let lastObsW = 0;
       new ResizeObserver((entries) => {
         const w = Math.round(entries[0].contentRect.width);
-        if (w && w !== lastW) { lastW = w; onResize(); }
+        if (w && w !== lastObsW) { lastObsW = w; onResize(); }
       }).observe($('shelfRows'));
     }
 
