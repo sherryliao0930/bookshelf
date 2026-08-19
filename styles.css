@@ -268,7 +268,13 @@ body{
 .shelf-pet svg{width:100%;height:auto;display:block}
 
 /* ---------- 拖曳排序 ---------- */
-.book.draggable{cursor:grab;touch-action:none}
+.book.draggable{
+  cursor:grab;touch-action:none;
+  user-select:none;-webkit-user-select:none;
+}
+/* 圖片預設可以被瀏覽器自己拖走，會把手勢搶走，一定要關掉 */
+.book.draggable img,.book.draggable svg{-webkit-user-drag:none;user-drag:none;pointer-events:none}
+.book.draggable:active{cursor:grabbing}
 .book.dragging{opacity:.3;pointer-events:none}
 .book.drop-before .book-cover{box-shadow:-6px 0 0 var(--yellow),0 8px 14px rgba(110,69,32,.45)}
 .book.drop-after .book-cover{box-shadow:6px 0 0 var(--yellow),0 8px 14px rgba(110,69,32,.45)}
@@ -316,6 +322,16 @@ body.is-dragging{cursor:grabbing;user-select:none}
 .c3{background:linear-gradient(150deg,#7cc9ee,#3596cc)}   /* 品牌淺藍 */
 .c4{background:linear-gradient(150deg,#f6ae97,#dd6f52)}   /* 頭巾橘 */
 .c5{background:linear-gradient(150deg,#e8b477,#b87c3a)}   /* 海狸毛色 */
+
+/* 管理模式下的「可以拖我」握把 */
+.book-grip{
+  position:absolute;top:7px;left:7px;
+  width:28px;height:28px;border-radius:9px;
+  background:rgba(255,255,255,.92);color:var(--blue-dk);
+  display:grid;place-items:center;pointer-events:none;
+  box-shadow:0 2px 6px rgba(0,0,0,.28);
+}
+.book-grip .ic{width:16px;height:16px}
 
 .book-tools{
   position:absolute;top:7px;right:7px;display:flex;gap:5px;

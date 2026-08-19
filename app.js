@@ -338,12 +338,15 @@
     el.title = b.title + (b.author ? ' — ' + b.author : '');
 
     const cover = b.cover_path
-      ? '<img src="' + esc(publicUrl(b.cover_path)) + '" alt="" loading="lazy">'
+      ? '<img src="' + esc(publicUrl(b.cover_path)) + '" alt="" loading="lazy" draggable="false">'
       : '<div class="fallback ' + coverColor(b.title || '') + '">' +
           icon('book') + '<span>' + esc(b.title) + '</span></div>';
 
     el.innerHTML =
       '<div class="book-cover">' + cover +
+        (canManage()
+          ? '<div class="book-grip" title="按住就可以拖曳排序">' + icon('drag') + '</div>'
+          : '') +
         (canManage()
           ? '<div class="book-tools">' +
               '<button class="book-edit" type="button" title="改書名／換封面" aria-label="改書名或換封面">' +
@@ -379,6 +382,7 @@
       el.dataset.id = b.id;
       el.dataset.cat = catOf(b);
       el.addEventListener('pointerdown', (ev) => startDrag(ev, b, el));
+      el.addEventListener('dragstart', (ev) => ev.preventDefault());
     }
     return el;
   }
