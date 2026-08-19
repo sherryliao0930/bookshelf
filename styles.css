@@ -178,16 +178,16 @@ body{
 /* ---------- 每一科的標題 ---------- */
 .group{margin-bottom:8px}
 .group:last-child{margin-bottom:0}
-.group-head{display:flex;align-items:center;gap:9px;margin:0 0 8px 2px}
+.group-head{display:flex;align-items:center;gap:11px;margin:0 0 10px 2px}
 .group-chip{
-  display:inline-flex;align-items:center;gap:6px;
-  padding:5px 14px;border-radius:999px;
+  display:inline-flex;align-items:center;gap:9px;
+  padding:8px 22px;border-radius:999px;
   background:var(--cream);color:var(--wood-deep);
-  font-size:14.5px;font-weight:800;
-  box-shadow:0 2px 0 rgba(0,0,0,.18);
+  font-size:21px;font-weight:800;letter-spacing:.03em;
+  box-shadow:0 3px 0 rgba(0,0,0,.25);
 }
-.group-chip i{width:10px;height:10px;border-radius:50%;display:block}
-.group-count{font-size:13px;font-weight:700;color:rgba(255,255,255,.7)}
+.group-chip i{width:14px;height:14px;border-radius:50%;display:block}
+.group-count{font-size:16px;font-weight:700;color:rgba(255,255,255,.85)}
 
 /* ---------- 書櫃牆 ---------- */
 #shelfMain{padding:26px 20px 40px;max-width:1280px;margin:0 auto}
@@ -628,7 +628,9 @@ body.is-dragging{cursor:grabbing;user-select:none}
   .filter-bar{gap:7px;margin-bottom:14px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
   .filter-bar::-webkit-scrollbar{display:none}
   .chip{padding:8px 13px;font-size:14px}
-  .group-chip{font-size:13.5px;padding:4px 12px}
+  .group-chip{font-size:18px;padding:6px 16px;gap:7px}
+  .group-chip i{width:12px;height:12px}
+  .group-count{font-size:14px}
   .bookcase{margin-top:76px;padding:4px;border-radius:16px}
   .bookcase-body{padding:6px 0;border-left-width:8px;border-right-width:8px}
   .shelf-inner{border-radius:8px 8px 2px 2px}

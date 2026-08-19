@@ -1209,8 +1209,11 @@
     renderPage();
   }
 
+  // 按鈕顯示的是「按下去會變成什麼」，不是目前狀態
   function updateSpreadLabel() {
-    $('spreadBtn').textContent = spread ? '雙頁' : '單頁';
+    const btn = $('spreadBtn');
+    btn.textContent = spread ? '單頁' : '雙頁';
+    btn.title = spread ? '切換成單頁 (D)' : '切換成雙頁 (D)';
   }
 
   function cycleZoomMode() {
