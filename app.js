@@ -82,6 +82,9 @@
         'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
     }
 
+    // 解鎖狀態記在這個分頁，重新整理不用再輸入一次密碼（關掉分頁就失效）
+    try { if (sessionStorage.getItem('bookshelf:admin') === '1') isAdmin = true; } catch (e) {}
+
     bindUI();
     updateAdminUI();
 
@@ -426,6 +429,7 @@
     dragState = {
       book: book, el: el, target: null, before: true, ghost: null,
       startX: ev.clientX, startY: ev.clientY,
+      lastX: ev.clientX, lastY: ev.clientY, autoScroll: null,
       rect: el.getBoundingClientRect()
     };
     window.addEventListener('pointermove', onDragMove);
@@ -444,6 +448,40 @@
     dragState.ghost = g;
     el.classList.add('dragging');
     document.body.classList.add('is-dragging');
+
+    // 拖到畫面上下緣時自動捲動，才拖得到看不見的那幾層
+    dragState.autoScroll = setInterval(() => {
+      if (!dragState) return;
+      const edge = 90, step = 16;
+      let dy = 0;
+      if (dragState.lastY < edge) dy = -step;
+      else if (dragState.lastY > window.innerHeight - edge) dy = step;
+      if (!dy) return;
+      const before = window.scrollY;
+      window.scrollBy(0, dy);
+      if (window.scrollY !== before) updateDropTarget(dragState.lastX, dragState.lastY);
+    }, 30);
+  }
+
+  // 找出游標底下是哪一本書，要插在它前面還是後面
+  function updateDropTarget(x, y) {
+    if (!dragState || !dragState.ghost) return;
+    const g = dragState.ghost;
+    g.style.display = 'none';
+    const under = document.elementFromPoint(x, y);
+    g.style.display = '';
+
+    clearDropMarks();
+    const target = under && under.closest ? under.closest('.book') : null;
+    if (target && target !== dragState.el && target.dataset.id) {
+      const r = target.getBoundingClientRect();
+      const before = x < r.left + r.width / 2;
+      target.classList.add(before ? 'drop-before' : 'drop-after');
+      dragState.target = target;
+      dragState.before = before;
+    } else {
+      dragState.target = null;
+    }
   }
 
   function clearDropMarks() {
@@ -461,27 +499,12 @@
       beginGhost();
     }
     ev.preventDefault();
+    dragState.lastX = ev.clientX;
+    dragState.lastY = ev.clientY;
     const g = dragState.ghost;
     g.style.left = (dragState.rect.left + dx) + 'px';
     g.style.top = (dragState.rect.top + dy) + 'px';
-
-    g.style.display = 'none';
-    const under = document.elementFromPoint(ev.clientX, ev.clientY);
-    g.style.display = '';
-
-    clearDropMarks();
-    const target = under && under.closest ? under.closest('.book') : null;
-    // 只能在同一科裡面排順序，跨科拖不會有反應（分類要用編輯視窗改）
-    const sameCat = target && target.dataset.cat === dragState.el.dataset.cat;
-    if (target && sameCat && target !== dragState.el && target.dataset.id) {
-      const r = target.getBoundingClientRect();
-      const before = ev.clientX < r.left + r.width / 2;
-      target.classList.add(before ? 'drop-before' : 'drop-after');
-      dragState.target = target;
-      dragState.before = before;
-    } else {
-      dragState.target = null;
-    }
+    updateDropTarget(ev.clientX, ev.clientY);
   }
 
   function endDrag() {
@@ -496,6 +519,7 @@
     const before = dragState.before;
 
     if (dragMoved) dragEndedAt = Date.now();
+    if (dragState.autoScroll) clearInterval(dragState.autoScroll);
     if (dragState.ghost) dragState.ghost.remove();
     dragState.el.classList.remove('dragging');
     document.body.classList.remove('is-dragging');
@@ -508,16 +532,42 @@
   function reorder(dragId, targetId, before) {
     const from = books.findIndex((b) => b.id === dragId);
     if (from < 0) return;
+    const target = books.find((b) => b.id === targetId);
+
+    // 拖到別科的書上面 = 順便換到那一科
+    let movedToCat = null;
+    if (target && hasCategory && !activeCat) {
+      const oldCat = books[from].category || null;
+      const newCat = target.category || null;
+      if (oldCat !== newCat) {
+        books[from].category = newCat;
+        movedToCat = newCat || UNCATEGORIZED;
+      }
+    }
+
     const moved = books.splice(from, 1)[0];
     let to = books.findIndex((b) => b.id === targetId);
     if (to < 0) to = books.length;
     else if (!before) to += 1;
     books.splice(to, 0, moved);
     applyFilter();
-    saveOrder();
+    saveOrder(movedToCat ? moved : null, movedToCat);
   }
 
-  async function saveOrder() {
+  async function saveOrder(catBook, catName) {
+    // 換了科目就連同分類一起存
+    if (catBook) {
+      try {
+        const { data, error } = await sb.from('books')
+          .update({ category: catBook.category }).eq('id', catBook.id).select();
+        if (error) throw error;
+        if (!data || !data.length) { toast(NO_UPDATE_PERMISSION, 6000); return; }
+        toast('已移到「' + catName + '」');
+      } catch (e) {
+        toast('換分類失敗：' + (e.message || e), 4000);
+        return;
+      }
+    }
     const updates = [];
     books.forEach((b, i) => {
       const pos = (i + 1) * 10;
@@ -531,7 +581,7 @@
       const bad = res.find((r) => r && r.error);
       if (bad) throw bad.error;
       if (res.some((r) => !r.data || !r.data.length)) { orderNotSaved(); return; }
-      toast('順序已儲存');
+      if (!catBook) toast('順序已儲存');
     } catch (e) {
       const m = String(e.message || e);
       if (/position/i.test(m)) { hasPosition = false; orderNotSaved(); }
@@ -1176,6 +1226,7 @@
     // 離開管理模式
     $('exitAdmin').addEventListener('click', () => {
       isAdmin = false;
+      try { sessionStorage.removeItem('bookshelf:admin'); } catch (e) {}
       updateAdminUI();
       renderShelf();
       toast('已離開管理模式');
@@ -1188,6 +1239,7 @@
       e.preventDefault();
       if ($('fPassword').value === ADMIN_PASSWORD) {
         isAdmin = true;
+        try { sessionStorage.setItem('bookshelf:admin', '1'); } catch (e) {}
         $('pwModal').hidden = true;
         updateAdminUI();
         renderShelf();               // 解鎖後刪除鈕才出現
