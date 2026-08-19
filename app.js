@@ -25,6 +25,7 @@
   let dragState = null;       // 拖曳中的狀態
   let dragMoved = false;      // 這次按下去到底是拖曳還是單純點擊
   let dragEndedAt = 0;        // 剛拖曳完的時間，用來擋掉放開手指時的那一下點擊
+  let nextPosBump = 0;        // 同一批多檔上傳時，讓每本的排序值不重複
 
   // 閱讀器狀態
   let pdfDoc = null;
@@ -57,6 +58,11 @@
   function publicUrl(path) {
     return SUPABASE_URL.replace(/\/+$/, '') +
       '/storage/v1/object/public/' + BUCKET + '/' + path.split('/').map(encodeURIComponent).join('/');
+  }
+
+  // 檔名去掉副檔名就是書名
+  function fileTitle(name) {
+    return String(name).replace(/\.pdf$/i, '').trim() || '未命名';
   }
 
   function uid() {
@@ -674,6 +680,7 @@
   /* ---------------- 上傳 ---------------- */
   function openUpload() {
     $('uploadForm').reset();
+    updateFileList([]);
     // 預設帶入目前正在看的那一科，連續上傳同一科比較快
     fillCategorySelect($('fCategory'), activeCat);
     $('coverPreview').innerHTML = '<span>封面預覽</span>';
@@ -683,6 +690,45 @@
     $('submitUpload').textContent = '開始上傳';
     $('uploadModal').hidden = false;
     setTimeout(() => $('fTitle').focus(), 50);
+  }
+
+  // 選了幾個檔就長不一樣：一個檔照舊，多個檔改成清單模式
+  function updateFileList(files) {
+    const list = $('fileList');
+    const multi = files.length > 1;
+
+    $('fTitle').disabled = multi;
+    $('fTitle').required = !multi;
+    $('fCover').disabled = multi;
+    $('coverPreviewWrap').hidden = multi;
+    $('fCover').closest('.field').hidden = multi;
+
+    if (!files.length) {
+      list.hidden = true; list.innerHTML = '';
+      $('pdfHint').textContent = '可以一次選多個檔案，會自動一本一本上架。單一檔案建議 50 MB 以內';
+      return;
+    }
+
+    if (!multi) {
+      list.hidden = true; list.innerHTML = '';
+      const f = files[0];
+      $('pdfHint').textContent = '已選擇：' + f.name + '（' + fmtSize(f.size) + '）';
+      if (!$('fTitle').value.trim()) $('fTitle').value = fileTitle(f.name);
+      return;
+    }
+
+    const total = files.reduce((n, f) => n + f.size, 0);
+    $('pdfHint').textContent = '已選擇 ' + files.length + ' 個檔案，共 ' + fmtSize(total) +
+      '。書名會自動用檔名，封面自動抓每本 PDF 的第一頁，上架後可以再個別修改。';
+    list.innerHTML = '<div class="file-list-head">這 ' + files.length + ' 本會依序上架</div>' +
+      files.map((f, i) =>
+        '<div class="file-row">' +
+          '<span class="n">' + (i + 1) + '</span>' +
+          '<span class="t">' + esc(fileTitle(f.name)) + '</span>' +
+          '<span class="s">' + fmtSize(f.size) + '</span>' +
+          '<span class="mark"></span>' +
+        '</div>').join('');
+    list.hidden = false;
   }
 
   function setProgress(pct, text) {
@@ -758,19 +804,98 @@
     });
   }
 
+  // 上傳一本書。回傳 { ok, error }
+  async function uploadOne(pdfFile, meta, onStage) {
+    const stage = onStage || function () {};
+    let pdf, pageCount = null;
+
+    stage(3, '正在檢查 PDF…');
+    const buf = await pdfFile.arrayBuffer();
+    try {
+      pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf.slice(0)) }).promise;
+      pageCount = pdf.numPages;
+    } catch (e) {
+      return { ok: false, error: '這個 PDF 打不開（可能已損毀或有密碼保護）' };
+    }
+
+    stage(8, '正在處理封面…');
+    let coverBlob = null;
+    try {
+      coverBlob = meta.coverFile
+        ? await shrinkImage(meta.coverFile, 600)
+        : await coverFromPdf(pdf);
+    } catch (e) {
+      coverBlob = null;                       // 封面失敗不擋上傳
+    }
+
+    const key = uid();
+    const pdfPath = 'pdfs/' + key + '.pdf';
+    try {
+      await uploadToStorage(pdfPath, pdfFile, 'application/pdf', (r) => {
+        stage(10 + r * 75, '正在上傳 PDF… ' + Math.round(r * 100) + '%（' + fmtSize(pdfFile.size) + '）');
+      });
+    } catch (e) {
+      return { ok: false, error: uploadHint(e) };
+    }
+
+    let coverPath = null;
+    if (coverBlob) {
+      stage(88, '正在上傳封面…');
+      coverPath = 'covers/' + key + '.jpg';
+      try { await uploadToStorage(coverPath, coverBlob, 'image/jpeg'); }
+      catch (e) { coverPath = null; }
+    }
+
+    stage(95, '正在放上書架…');
+    const row = {
+      title: meta.title,
+      author: meta.author || null,
+      pdf_path: pdfPath, cover_path: coverPath,
+      page_count: pageCount, size_bytes: pdfFile.size
+    };
+    if (hasCategory && meta.category) row.category = meta.category;
+    if (hasPosition) {
+      const maxPos = books.reduce((m, b) =>
+        (b.position != null && b.position > m ? b.position : m), 0);
+      row.position = maxPos + 10 + nextPosBump;
+      nextPosBump += 10;                      // 同一批連續上傳時不要撞在一起
+    }
+
+    // 資料庫還沒跑 supabase-migration.sql 的話會少欄位。
+    // Postgres 一次只會報一個缺少的欄位，所以要一個一個拿掉重試。
+    const optional = ['position', 'category'];
+    let error = null;
+    for (let attempt = 0; attempt <= optional.length; attempt++) {
+      ({ error } = await sb.from('books').insert(row));
+      if (!error) break;
+      const msg = String(error.message || '');
+      const missing = optional.find((c) => row[c] !== undefined && msg.indexOf("'" + c + "'") >= 0);
+      if (!missing) break;
+      if (missing === 'position') hasPosition = false; else hasCategory = false;
+      delete row[missing];
+    }
+    if (error) {
+      await sb.storage.from(BUCKET).remove([pdfPath, coverPath].filter(Boolean));
+      return { ok: false, error: error.message || String(error) };
+    }
+    return { ok: true };
+  }
+
+  function uploadHint(e) {
+    const m = String(e.message || e);
+    return m + (/exceeded|too large|413/i.test(m)
+      ? '（檔案超過 Supabase 的單檔上限，請到 Storage 設定調高，或改用小一點的 PDF）' : '');
+  }
+
   async function doUpload(ev) {
     ev.preventDefault();
-    const title = $('fTitle').value.trim();
-    const author = $('fAuthor').value.trim();
-    const pdfFile = $('fPdf').files[0];
-    const coverFile = $('fCover').files[0];
     const errBox = $('uploadError');
     errBox.hidden = true;
 
-    if (!title) return fail('請先填書名。');
-    if (!pdfFile) return fail('請選一個 PDF 檔。');
-    if (!/\.pdf$/i.test(pdfFile.name) && pdfFile.type !== 'application/pdf')
-      return fail('這個檔案看起來不是 PDF。');
+    const files = Array.prototype.slice.call($('fPdf').files || []);
+    const author = $('fAuthor').value.trim();
+    const category = $('fCategory') ? $('fCategory').value : '';
+    const multi = files.length > 1;
 
     function fail(msg) {
       errBox.textContent = msg;
@@ -780,92 +905,68 @@
       return false;
     }
 
+    if (!files.length) return fail('請選 PDF 檔。');
+    const bad = files.find((f) => !/\.pdf$/i.test(f.name) && f.type !== 'application/pdf');
+    if (bad) return fail('「' + bad.name + '」看起來不是 PDF。');
+
+    const title = $('fTitle').value.trim();
+    if (!multi && !title) return fail('請先填書名。');
+
     $('submitUpload').disabled = true;
     $('submitUpload').textContent = '上傳中…';
+    nextPosBump = 0;
 
-    try {
-      // 1. 讀 PDF，取得頁數（順便當作檔案檢查）
-      setProgress(3, '正在檢查 PDF…');
-      const buf = await pdfFile.arrayBuffer();
-      let pdf, pageCount = null;
-      try {
-        pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf.slice(0)) }).promise;
-        pageCount = pdf.numPages;
-      } catch (e) {
-        return fail('這個 PDF 打不開（可能已損毀或有密碼保護）。');
-      }
-
-      // 2. 準備封面
-      setProgress(8, '正在處理封面…');
-      let coverBlob = null;
-      try {
-        coverBlob = coverFile ? await shrinkImage(coverFile, 600) : await coverFromPdf(pdf);
-      } catch (e) {
-        coverBlob = null; // 封面失敗不擋上傳
-      }
-
-      // 3. 上傳 PDF（占進度 10% → 85%）
-      const key = uid();
-      const pdfPath = 'pdfs/' + key + '.pdf';
-      await uploadToStorage(pdfPath, pdfFile, 'application/pdf', (r) => {
-        setProgress(10 + r * 75, '正在上傳 PDF… ' + Math.round(r * 100) + '%（' + fmtSize(pdfFile.size) + '）');
-      });
-
-      // 4. 上傳封面
-      let coverPath = null;
-      if (coverBlob) {
-        setProgress(88, '正在上傳封面…');
-        coverPath = 'covers/' + key + '.jpg';
-        try {
-          await uploadToStorage(coverPath, coverBlob, 'image/jpeg');
-        } catch (e) { coverPath = null; }
-      }
-
-      // 5. 寫入書籍資料
-      setProgress(95, '正在放上書架…');
-      const row = {
-        title, author: author || null,
-        pdf_path: pdfPath, cover_path: coverPath,
-        page_count: pageCount, size_bytes: pdfFile.size
-      };
-      if (hasCategory) {
-        const cat = $('fCategory').value;
-        if (cat) row.category = cat;
-      }
-      // 新書排在最後面
-      if (hasPosition) {
-        const maxPos = books.reduce((m, b) =>
-          (b.position != null && b.position > m ? b.position : m), 0);
-        row.position = maxPos + 10;
-      }
-      // 資料庫還沒跑 supabase-migration.sql 的話會少欄位。
-      // Postgres 一次只會報一個缺少的欄位，所以要一個一個拿掉重試。
-      const optional = ['position', 'category'];
-      let error = null;
-      for (let attempt = 0; attempt <= optional.length; attempt++) {
-        ({ error } = await sb.from('books').insert(row));
-        if (!error) break;
-        const msg = String(error.message || '');
-        const missing = optional.find((c) => row[c] !== undefined && msg.indexOf("'" + c + "'") >= 0);
-        if (!missing) break;
-        if (missing === 'position') hasPosition = false; else hasCategory = false;
-        delete row[missing];
-      }
-      if (error) {
-        await sb.storage.from(BUCKET).remove([pdfPath, coverPath].filter(Boolean));
-        throw error;
-      }
-
+    // ---- 單一檔案 ----
+    if (!multi) {
+      const res = await uploadOne(files[0], {
+        title: title, author: author, category: category,
+        coverFile: $('fCover').files[0] || null
+      }, setProgress);
+      if (!res.ok) { $('uploadProgress').hidden = true; return fail('上傳失敗：' + res.error); }
       setProgress(100, '完成！');
       $('uploadModal').hidden = true;
       toast('「' + title + '」已經上架');
       loadBooks();
-    } catch (e) {
-      const m = String(e.message || e);
-      fail('上傳失敗：' + m + (/exceeded|too large|413/i.test(m)
-        ? '（檔案超過 Supabase 的單檔上限，請到 Storage 設定調高，或改用小一點的 PDF）' : ''));
-      $('uploadProgress').hidden = true;
+      return true;
     }
+
+    // ---- 多個檔案：一本一本上架 ----
+    const rows = $('fileList').querySelectorAll('.file-row');
+    const failures = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const name = fileTitle(f.name);
+      const row = rows[i];
+      if (row) row.classList.add('doing');
+      const res = await uploadOne(f, {
+        title: name, author: author, category: category, coverFile: null
+      }, (pct, text) => {
+        const overall = (i * 100 + pct) / files.length;
+        setProgress(overall, '第 ' + (i + 1) + ' / ' + files.length + ' 本：' + name + ' — ' + text);
+      });
+      if (row) {
+        row.classList.remove('doing');
+        row.classList.add('done', res.ok ? 'ok' : 'bad');
+        const mark = row.querySelector('.mark');
+        if (mark) mark.textContent = res.ok ? '✓' : '✕';
+      }
+      if (!res.ok) failures.push(name + '（' + res.error + '）');
+      // 每一本傳完就更新書架，看得到進度
+      await loadBooks();
+    }
+
+    setProgress(100, '完成！');
+    $('submitUpload').disabled = false;
+    $('submitUpload').textContent = '開始上傳';
+
+    const okCount = files.length - failures.length;
+    if (!failures.length) {
+      $('uploadModal').hidden = true;
+      toast('已上架 ' + okCount + ' 本書');
+    } else {
+      fail('完成 ' + okCount + ' 本，但有 ' + failures.length + ' 本失敗：' + failures.join('；'));
+    }
+    return true;
   }
 
   /* ---------------- 閱讀器 ---------------- */
@@ -1049,13 +1150,8 @@
       box.innerHTML = '<img src="' + url + '" alt="">';
     });
     $('fPdf').addEventListener('change', (e) => {
-      const f = e.target.files[0];
-      $('pdfHint').textContent = f
-        ? '已選擇：' + f.name + '（' + fmtSize(f.size) + '）'
-        : '單一檔案建議 50 MB 以內';
-      if (f && !$('fTitle').value.trim()) {
-        $('fTitle').value = f.name.replace(/\.pdf$/i, '');
-      }
+      const files = Array.prototype.slice.call(e.target.files || []);
+      updateFileList(files);
     });
 
     // 編輯書籍

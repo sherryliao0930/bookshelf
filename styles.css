@@ -190,12 +190,13 @@ body{
 .group-count{font-size:13px;font-weight:700;color:rgba(255,255,255,.7)}
 
 /* ---------- 書櫃牆 ---------- */
-/* 上方留白要 ≥ 吉祥物高度，否則會被上方列蓋住 */
-#shelfMain{padding:120px 20px 40px;max-width:1280px;margin:0 auto}
+#shelfMain{padding:26px 20px 40px;max-width:1280px;margin:0 auto}
 
 /* 白色粗外框＝品牌貼紙感 */
+/* margin-top 要 ≥ 動物高度：牠們是從書櫃頂板往上長的，
+   留白如果放在 #shelfMain 會跑到篩選列上面，動物就會壓住篩選列。 */
 .bookcase{
-  position:relative;background:#fff;padding:5px;border-radius:22px;
+  position:relative;margin-top:112px;background:#fff;padding:5px;border-radius:22px;
   box-shadow:0 20px 40px rgba(0,0,0,.35);
 }
 .bookcase-top{
@@ -428,6 +429,32 @@ body.is-dragging{cursor:grabbing;user-select:none}
 }
 .cover-preview img{width:100%;height:100%;object-fit:cover}
 
+/* 多檔上傳時的清單 */
+.file-list{
+  margin-bottom:16px;border:2.5px solid var(--blue-pale);border-radius:12px;
+  background:#fbfcfe;max-height:210px;overflow:auto;
+}
+.file-list-head{
+  padding:10px 14px;font-size:13.5px;font-weight:700;color:var(--blue-dk);
+  border-bottom:2px solid var(--blue-pale);position:sticky;top:0;background:#fbfcfe;
+}
+.file-row{
+  display:flex;align-items:center;gap:9px;padding:9px 14px;
+  font-size:14px;border-bottom:1px solid #eef2f8;
+}
+.file-row:last-child{border-bottom:0}
+.file-row .n{
+  flex:none;width:22px;height:22px;border-radius:50%;background:var(--blue-pale);
+  color:var(--blue-dk);font-size:12px;font-weight:800;display:grid;place-items:center;
+}
+.file-row .t{flex:1;min-width:0;font-weight:600;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-row .s{flex:none;font-size:12px;color:var(--ink-soft);font-weight:600;font-variant-numeric:tabular-nums}
+.file-row.done .t{color:var(--ink-soft)}
+.file-row .mark{flex:none;font-size:14px;font-weight:800}
+.file-row.ok .mark{color:#2e8b45}
+.file-row.bad .mark{color:var(--red)}
+
 .progress{margin-bottom:14px}
 .progress-bar{height:12px;border-radius:999px;background:var(--blue-pale);overflow:hidden}
 .progress-fill{
@@ -534,7 +561,8 @@ body.is-dragging{cursor:grabbing;user-select:none}
    ========================================================= */
 @media (max-width:1024px){
   :root{--book-w:120px;--book-gap:20px;--pet-w:56px}
-  #shelfMain{padding:104px 16px 36px}
+  #shelfMain{padding:22px 16px 36px}
+  .bookcase{margin-top:96px}
   .topbar{padding:12px 18px}
   .topbar h1{font-size:23px}
   .mascot-title{width:38px;height:36px}
@@ -568,12 +596,12 @@ body.is-dragging{cursor:grabbing;user-select:none}
   .fab{right:14px;bottom:calc(14px + env(safe-area-inset-bottom));width:44px;height:44px;opacity:.8}
   .fab.is-admin{height:48px;padding:0 18px;font-size:14px}
 
-  #shelfMain{padding:82px 10px 30px}
+  #shelfMain{padding:18px 10px 30px}
   .filter-bar{gap:7px;margin-bottom:14px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
   .filter-bar::-webkit-scrollbar{display:none}
   .chip{padding:8px 13px;font-size:14px}
   .group-chip{font-size:13.5px;padding:4px 12px}
-  .bookcase{padding:4px;border-radius:16px}
+  .bookcase{margin-top:76px;padding:4px;border-radius:16px}
   .bookcase-body{padding:10px}
   .shelf-inner{border-radius:8px 8px 2px 2px}
   .mascot-top{left:12px;width:62px}
