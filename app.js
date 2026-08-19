@@ -5,7 +5,7 @@
   const $ = (id) => document.getElementById(id);
   const ZOOM_STEPS = [0.25, 0.4, 0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 2.5, 3, 4];
   // 站在每層兩端的動物，一層換一組，所以每層看到的都不一樣
-  const ANIMALS = ['a-squirrel', 'a-fox', 'a-rabbit', 'a-bird', 'a-owl', 'a-penguin', 'a-panda'];
+  const ANIMALS = ['a-rabbit', 'a-bear', 'a-chick', 'a-dog', 'a-cat', 'a-panda', 'a-sheep', 'a-pig'];
   const CAT_COLORS = ['#e0503c', '#2f6fc4', '#41a132', '#eda200', '#8f7ae0', '#3596cc', '#dd6f52', '#25a97e'];
   const UNCATEGORIZED = '未分類';
   const catList = () => (typeof CATEGORIES !== 'undefined' && Array.isArray(CATEGORIES)) ? CATEGORIES : [];
@@ -311,7 +311,7 @@
     const d = document.createElement('div');
     d.className = 'shelf-pet';
     d.setAttribute('aria-hidden', 'true');
-    d.innerHTML = '<svg class="mascot" viewBox="0 0 120 124">' +
+    d.innerHTML = '<svg class="mascot" viewBox="0 0 120 120">' +
       '<use href="#' + ANIMALS[((n % ANIMALS.length) + ANIMALS.length) % ANIMALS.length] + '"/></svg>';
     return d;
   }
