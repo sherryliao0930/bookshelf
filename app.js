@@ -188,6 +188,12 @@
     return groups;
   }
 
+  function catAnimal(name) {
+    const i = catList().indexOf(name);
+    const n = i >= 0 ? i : catList().length;   // 未分類或沒列到的排在最後
+    return ANIMALS[n % ANIMALS.length];
+  }
+
   function catColor(name) {
     const i = catList().indexOf(name);
     return i >= 0 ? CAT_COLORS[i % CAT_COLORS.length] : '#a5825a';
@@ -273,7 +279,9 @@
         head.innerHTML =
           '<span class="group-chip"><i style="background:' + catColor(group.name) + '"></i>' +
             esc(group.name) + '</span>' +
-          '<span class="group-count">' + group.books.length + ' 本</span>';
+          '<span class="group-count">' + group.books.length + ' 本</span>' +
+          '<svg class="mascot group-pet" viewBox="0 0 120 120" aria-hidden="true">' +
+            '<use href="#' + catAnimal(group.name) + '"/></svg>';
         wrap.appendChild(head);
       }
 

@@ -177,6 +177,8 @@ body{
 }
 .group-chip i{width:14px;height:14px;border-radius:50%;display:block}
 .group-count{font-size:16px;font-weight:700;color:rgba(255,255,255,.85)}
+/* 每一科標籤旁邊站一隻 */
+.group-pet{width:54px;height:54px;flex:none;margin-left:2px}
 
 /* ---------- 書櫃牆 ---------- */
 #shelfMain{padding:26px 20px 40px;max-width:1280px;margin:0 auto}
@@ -599,7 +601,7 @@ body.is-dragging{cursor:grabbing;user-select:none}
    手機（≤640px）
    ========================================================= */
 @media (max-width:640px){
-  :root{--book-w:78px;--book-gap:10px;--shelf-pad:10px;--pet-w:30px;--pet-slots:1}
+  :root{--book-w:94px;--book-gap:12px;--shelf-pad:10px;--pet-w:0px;--pet-slots:0}
 
   .topbar{padding:11px 14px;gap:10px}
   .topbar h1{font-size:20px;flex:1;min-width:0}
@@ -614,6 +616,7 @@ body.is-dragging{cursor:grabbing;user-select:none}
   .filter-bar::-webkit-scrollbar{display:none}
   .chip{padding:8px 13px;font-size:14px}
   .group-chip{font-size:18px;padding:6px 16px;gap:7px}
+  .group-pet{width:46px;height:46px}
   .group-chip i{width:12px;height:12px}
   .group-count{font-size:14px}
   .bookcase{margin-top:76px;padding:4px;border-radius:16px}
