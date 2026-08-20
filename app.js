@@ -1045,9 +1045,19 @@
       pageNum = normalizePage(saved || 1);
       $('readerLoading').style.display = 'none';
       await renderPage();
+      hintSwipeOnce();
     } catch (e) {
       $('readerLoadingText').textContent = '開啟失敗：' + (e.message || e);
     }
+  }
+
+  function hintSwipeOnce() {
+    if (!('ontouchstart' in window)) return;
+    try {
+      if (localStorage.getItem('bookshelf:swipehint') === '1') return;
+      localStorage.setItem('bookshelf:swipehint', '1');
+    } catch (e) { return; }
+    toast('左右滑動可以翻頁', 3200);
   }
 
   function closeReader() {
@@ -1349,6 +1359,8 @@
       if (e.key === 'Enter') { e.preventDefault(); jump(); $('pageInput').blur(); }
     });
 
+    setupSwipe();
+
     // Ctrl + 滾輪縮放
     $('pageHost').addEventListener('wheel', (e) => {
       if (!e.ctrlKey || !pdfDoc) return;
@@ -1377,6 +1389,49 @@
         case 'g': case 'G': e.preventDefault(); $('pageInput').select(); break;
       }
     });
+  }
+
+  // 手機／平板：左右滑動翻頁
+  function setupSwipe() {
+    const host = $('pageHost');
+    let sx = 0, sy = 0, st = 0, active = false, maxLeft = 0;
+
+    host.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) { active = false; return; }
+      const t = e.touches[0];
+      sx = t.clientX; sy = t.clientY; st = Date.now(); active = true;
+      maxLeft = host.scrollWidth - host.clientWidth;
+    }, { passive: true });
+
+    // 兩指（縮放）就不算滑動翻頁
+    host.addEventListener('touchmove', (e) => {
+      if (e.touches.length > 1) active = false;
+    }, { passive: true });
+
+    host.addEventListener('touchend', (e) => {
+      if (!active || !pdfDoc) return;
+      active = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - sx;
+      const dy = t.clientY - sy;
+      if (Date.now() - st > 700) return;              // 慢慢移動不算滑
+      if (Math.abs(dx) < 60) return;                  // 幅度太小不算
+      if (Math.abs(dx) < Math.abs(dy) * 1.4) return;  // 比較像上下捲動就不管
+
+      // 放大到可以左右平移時，要滑到邊緣才翻頁，不然會跟平移打架。
+      // 門檻要夠大：內距造成的幾 px 溢出不算「可以平移」，否則兩邊都翻不了頁。
+      const canPan = maxLeft > 24;
+      const EDGE = 16;
+      if (dx < 0) {
+        if (canPan && host.scrollLeft < maxLeft - EDGE) return;
+        if (pageNum + pageStep() > pdfDoc.numPages) return;
+        goPage(pageNum + pageStep());
+      } else {
+        if (canPan && host.scrollLeft > EDGE) return;
+        if (pageNum <= 1) return;
+        goPage(pageNum - pageStep());
+      }
+    }, { passive: true });
   }
 
   function toggleFullscreen() {
