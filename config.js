@@ -15,7 +15,7 @@ const ADMIN_PASSWORD = 'liaopeiyu';
 const BUCKET = 'books';
 
 // 5) 書櫃標題（顯示在網頁最上方）
-const SHELF_TITLE = '六上電子書櫃';
+const SHELF_TITLE = '609通用教材電子書櫃';
 
 // 6) 分類（科目）清單：書架會照這個順序分層，上傳時也從這裡選。
 //    想改科目、加減項目，直接改這一行就好，順序就是書架上的順序。
