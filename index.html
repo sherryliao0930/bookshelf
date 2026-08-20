@@ -3,11 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>電子書櫃</title>
+<title>六上電子書櫃</title>
+<meta name="description" content="班級的電子書櫃。點一本書就能直接翻閱，可以輸入頁數跳頁、放大縮小。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="六上電子書櫃">
+<meta property="og:title" content="六上電子書櫃">
+<meta property="og:description" content="點一本書就能直接翻閱，可以輸入頁數跳頁、放大縮小。">
+<meta property="og:url" content="https://sherryliao0930.github.io/bookshelf/">
+<meta property="og:image" content="https://sherryliao0930.github.io/bookshelf/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=25">
+<link rel="stylesheet" href="styles.css?v=26">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
 </head>
 <body>
@@ -251,11 +261,7 @@
 
   <main id="shelfMain">
     <div id="statusBox" class="status-box" hidden></div>
-    <div id="adminBar" class="admin-bar" hidden>
-      <svg class="ic"><use href="#i-drag"/></svg>
-      <span>管理模式：<b>拖曳書本</b>可以調順序，<b>拖到別科的書上面</b>就會換到那一科；書封上的按鈕可以<b>改書名／換封面</b>或<b>刪除</b>。</span>
-      <button type="button" class="btn btn-small" id="exitAdmin">離開管理模式</button>
-    </div>
+    <div id="adminBar" class="admin-bar" hidden></div>
 
     <nav id="filterBar" class="filter-bar" hidden aria-label="分類"></nav>
 
@@ -411,7 +417,7 @@
       <button class="icon-btn ghost" data-close-pw aria-label="關閉"><svg class="ic"><use href="#i-close"/></svg></button>
     </div>
     <form id="pwForm" class="modal-body">
-      <p class="pw-note" id="pwNote">上傳與刪除需要管理密碼，瀏覽則不需要。</p>
+      <p class="pw-note" id="pwNote"></p>
       <label class="field">
         <input id="fPassword" type="password" autocomplete="current-password" placeholder="管理密碼">
       </label>
@@ -475,6 +481,6 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="config.js"></script>
-<script src="app.js?v=25"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>

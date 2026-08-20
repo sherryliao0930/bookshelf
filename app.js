@@ -397,9 +397,28 @@
   function canManage() { return !ADMIN_PASSWORD || isAdmin; }
 
   // 角落的管理鈕：沒解鎖時是不起眼的齒輪，解鎖後才變成明顯的「上傳新書」
+  function buildAdminBar() {
+    const bar = $('adminBar');
+    if (bar.dataset.ready) return;
+    bar.dataset.ready = '1';
+    bar.innerHTML =
+      '<svg class="ic"><use href="#i-drag"/></svg>' +
+      '<span>管理模式：<b>拖曳書本</b>可以調順序，<b>拖到別科的書上面</b>就會換到那一科；' +
+      '書封上的按鈕可以<b>改書名／換封面</b>或<b>刪除</b>。</span>' +
+      '<button type="button" class="btn btn-small" id="exitAdmin">離開管理模式</button>';
+    $('exitAdmin').addEventListener('click', () => {
+      isAdmin = false;
+      try { sessionStorage.removeItem('bookshelf:admin'); } catch (e) {}
+      updateAdminUI();
+      renderShelf();
+      toast('已離開管理模式');
+    });
+  }
+
   function updateAdminUI() {
     const fab = $('uploadBtn');
     const use = fab.querySelector('use');
+    if (canManage()) buildAdminBar();
     $('adminBar').hidden = !canManage();
     if (canManage()) {
       fab.classList.add('is-admin');
@@ -415,7 +434,7 @@
   function requireAdmin(fn, note) {
     if (!ADMIN_PASSWORD || isAdmin) { fn(); return; }
     pendingAction = fn;
-    $('pwNote').textContent = note || '上傳與刪除需要管理密碼，瀏覽則不需要。';
+    $('pwNote').textContent = note || '上傳與刪除需要密碼，瀏覽則不需要。';
     $('pwError').hidden = true;
     $('fPassword').value = '';
     $('pwModal').hidden = false;
@@ -1316,15 +1335,6 @@
       const box = $('eCoverPreview');
       if (!f) return;
       box.innerHTML = '<img src="' + URL.createObjectURL(f) + '" alt="">';
-    });
-
-    // 離開管理模式
-    $('exitAdmin').addEventListener('click', () => {
-      isAdmin = false;
-      try { sessionStorage.removeItem('bookshelf:admin'); } catch (e) {}
-      updateAdminUI();
-      renderShelf();
-      toast('已離開管理模式');
     });
 
     // 密碼
