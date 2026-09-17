@@ -524,6 +524,8 @@ body.is-dragging{cursor:grabbing;user-select:none}
 
 .page-host{
   flex:1;overflow:auto;position:relative;display:flex;
+  /* 讓兩指捏合交給我們自己處理（瀏覽器自帶的縮放會連工具列一起放大且模糊） */
+  touch-action:pan-x pan-y;
   -webkit-overflow-scrolling:touch;
   background:radial-gradient(circle at 50% 0%,#fff,var(--cream) 65%);
 }

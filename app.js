@@ -38,6 +38,7 @@
   let appliedScale = 1;       // 這一頁實際用的倍率
   let lastRenderedPage = 0;   // 上一次畫的是第幾頁，用來判斷要不要捲回頁首
   let spread = false;         // 雙頁模式
+  let pendingFocus = null;    // 放大後要把哪個點留在原位
   const SPREAD_GAP = 14;      // 雙頁之間的縫隙，要跟 CSS 的 .canvas-wrap gap 一致
 
   /* ---------------- 工具 ---------------- */
@@ -1174,8 +1175,17 @@
         canvas2.hidden = true;
       }
 
-      const wrapW = $('canvasWrap').offsetWidth;
-      if (target !== lastRenderedPage) {
+      const wrap = $('canvasWrap');
+      const wrapW = wrap.offsetWidth;
+      if (pendingFocus) {
+        // 畫完後量出那一點現在在畫面上的哪裡，再用差值把它移回手指底下
+        const wr2 = wrap.getBoundingClientRect();
+        const nowX = wr2.left + pendingFocus.px * wrap.offsetWidth;
+        const nowY = wr2.top + pendingFocus.py * wrap.offsetHeight;
+        host.scrollLeft += nowX - pendingFocus.cx;
+        host.scrollTop += nowY - pendingFocus.cy;
+        pendingFocus = null;
+      } else if (target !== lastRenderedPage) {
         // 換頁才回到頁首並置中；同一頁只是重畫（縮放、轉向）就留在原來的位置
         host.scrollTop = 0;
         host.scrollLeft = Math.max(0, (wrapW - host.clientWidth) / 2);
@@ -1378,6 +1388,8 @@
     });
 
     setupSwipe();
+    setupDoubleTapZoom();
+    setupPinchZoom();
 
     // Ctrl + 滾輪縮放
     $('pageHost').addEventListener('wheel', (e) => {
@@ -1407,6 +1419,111 @@
         case 'g': case 'G': e.preventDefault(); $('pageInput').select(); break;
       }
     });
+  }
+
+  // 放大／縮小，並且讓畫面上的某一點留在原位
+  function zoomAtPoint(newScale, clientX, clientY) {
+    if (!pdfDoc) return;
+    const host = $('pageHost');
+    const wrap = $('canvasWrap');
+    const rect = host.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const w = wrap.offsetWidth || 1;
+    const h = wrap.offsetHeight || 1;
+    // 用「書頁自己的座標」算比例。書頁在容器裡是置中的，
+    // 拿容器原點算會整個偏掉。
+    const wr = wrap.getBoundingClientRect();
+    pendingFocus = {
+      px: (clientX - wr.left) / w,
+      py: (clientY - wr.top) / h,
+      cx: clientX, cy: clientY
+    };
+    zoomMode = 'custom';
+    customScale = Math.max(0.2, Math.min(6, newScale));
+    renderPage();
+  }
+
+  // 點兩下（或連點兩下螢幕）放大到那一塊；已經放大時再點兩下回到整頁
+  function setupDoubleTapZoom() {
+    const host = $('pageHost');
+
+    const toggle = (clientX, clientY) => {
+      if (!pdfDoc) return;
+      if (zoomMode === 'custom') {
+        pendingFocus = null;
+        zoomMode = 'fit-page';
+        renderPage();
+      } else {
+        zoomAtPoint(appliedScale * 2.4, clientX, clientY);
+      }
+    };
+
+    host.addEventListener('dblclick', (e) => {
+      if (e.target.closest && e.target.closest('.edge-nav')) return;
+      toggle(e.clientX, e.clientY);
+    });
+
+    // 觸控自己判斷連點兩下（行動瀏覽器不一定會送 dblclick）
+    let lastTap = 0, lastX = 0, lastY = 0;
+    host.addEventListener('touchend', (e) => {
+      if (e.touches.length || e.changedTouches.length !== 1) return;
+      const t = e.changedTouches[0];
+      const now = Date.now();
+      const near = Math.abs(t.clientX - lastX) < 40 && Math.abs(t.clientY - lastY) < 40;
+      if (now - lastTap < 320 && near) {
+        lastTap = 0;
+        toggle(t.clientX, t.clientY);
+      } else {
+        lastTap = now; lastX = t.clientX; lastY = t.clientY;
+      }
+    }, { passive: true });
+  }
+
+  // 兩指捏合縮放：過程中先用 CSS 放大做即時回饋，放開才重畫（重畫才會清晰）
+  function setupPinchZoom() {
+    const host = $('pageHost');
+    const wrap = $('canvasWrap');
+    let pinch = null;
+
+    const dist = (t) => Math.hypot(
+      t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const mid = (t) => ({
+      x: (t[0].clientX + t[1].clientX) / 2,
+      y: (t[0].clientY + t[1].clientY) / 2
+    });
+
+    host.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 2 || !pdfDoc) return;
+      const t = [e.touches[0], e.touches[1]];
+      const m = mid(t);
+      const rect = host.getBoundingClientRect();
+      pinch = {
+        d0: dist(t) || 1, scale0: appliedScale, k: 1,
+        cx: m.x, cy: m.y,
+        ox: host.scrollLeft + (m.x - rect.left),
+        oy: host.scrollTop + (m.y - rect.top)
+      };
+      wrap.style.transformOrigin = pinch.ox + 'px ' + pinch.oy + 'px';
+    }, { passive: true });
+
+    host.addEventListener('touchmove', (e) => {
+      if (!pinch || e.touches.length !== 2) return;
+      pinch.k = dist([e.touches[0], e.touches[1]]) / pinch.d0;
+      wrap.style.transform = 'scale(' + pinch.k + ')';
+    }, { passive: true });
+
+    const finish = () => {
+      if (!pinch) return;
+      const k = pinch.k, cx = pinch.cx, cy = pinch.cy, s0 = pinch.scale0;
+      wrap.style.transform = '';
+      wrap.style.transformOrigin = '';
+      pinch = null;
+      if (Math.abs(k - 1) < 0.05) return;    // 幾乎沒縮放就不重畫
+      zoomAtPoint(s0 * k, cx, cy);
+    };
+    host.addEventListener('touchend', finish, { passive: true });
+    host.addEventListener('touchcancel', finish, { passive: true });
   }
 
   // 手機／平板：左右滑動翻頁
